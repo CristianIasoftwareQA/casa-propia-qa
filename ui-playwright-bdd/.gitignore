@@ -1,0 +1,33 @@
+# Dependencias
+node_modules/
+
+# Archivos BDD generados por playwright-bdd
+.features-gen/
+
+# Reportes y resultados de Playwright
+playwright-report/
+test-results/
+blob-report/
+
+# Evidencia automatica
+traces/
+videos/
+*.webm
+screenshots/
+
+# Compilacion TypeScript
+dist/
+
+# Entornos y secretos
+.env
+*.env
+!*.env.example
+
+# Logs y temporales
+*.log
+*.tmp
+
+# IDE
+.idea/
+.vscode/
+.DS_Store

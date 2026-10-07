@@ -1,0 +1,130 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>com.casapropia.qa</groupId>
+    <artifactId>api-karate</artifactId>
+    <version>1.0.0</version>
+    <packaging>jar</packaging>
+
+    <name>Casa Propia - Pruebas API (Karate)</name>
+    <description>Suite de pruebas de API para la prueba tecnica Casa Propia usando Karate 1.4.1 sobre Java 11.</description>
+
+    <properties>
+        <!-- Codificacion explicita: el sistema Windows reporta Cp1252, forzamos UTF-8 -->
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
+
+        <!-- Java 11 fijado. No se actualiza automaticamente. -->
+        <maven.compiler.release>11</maven.compiler.release>
+
+        <!-- Versiones estables fijadas (sin SNAPSHOT ni RC). -->
+        <!-- Karate 1.4.1 es la ultima linea compatible con Java 11. -->
+        <karate.version>1.4.1</karate.version>
+        <!-- JUnit 5 compatible con Karate 1.4.1 y Java 11. -->
+        <junit.jupiter.version>5.10.2</junit.jupiter.version>
+        <maven.surefire.version>3.2.5</maven.surefire.version>
+        <maven.compiler.plugin.version>3.13.0</maven.compiler.plugin.version>
+    </properties>
+
+    <dependencies>
+        <!-- Karate con integracion JUnit 5. Trae karate-core transitivamente. -->
+        <dependency>
+            <groupId>com.intuit.karate</groupId>
+            <artifactId>karate-junit5</artifactId>
+            <version>${karate.version}</version>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <!-- Karate espera por defecto los recursos (features/js) junto al codigo de test. -->
+        <testResources>
+            <testResource>
+                <directory>src/test/java</directory>
+                <excludes>
+                    <exclude>**/*.java</exclude>
+                </excludes>
+            </testResource>
+        </testResources>
+
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <version>${maven.compiler.plugin.version}</version>
+                <configuration>
+                    <release>${maven.compiler.release}</release>
+                    <encoding>UTF-8</encoding>
+                </configuration>
+            </plugin>
+
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <version>${maven.surefire.version}</version>
+                <configuration>
+                    <!-- UTF-8 explicito tambien en la ejecucion de pruebas. -->
+                    <argLine>-Dfile.encoding=UTF-8</argLine>
+                    <!--
+                        Ejecucion por DEFECTO (mvn clean test): SOLO AllTestRunner, que corre
+                        TODA la suite (estructural + RF01-RF06) en UNA sola pasada. Asi el reporte
+                        de Karate contiene todos los escenarios y ningun runner sobrescribe a otro.
+
+                        testFailureIgnore=true: la build NO se aborta cuando hay fallos. Karate
+                        ejecuta todos los escenarios y el reporte se genera COMPLETO (con fallos y
+                        pasados). Los fallos por defecto (RF02/RF03/RF06) quedan visibles sin
+                        interrumpir la ejecucion ni el reporte.
+
+                        Runners alternos para ejecuciones puntuales (no por defecto):
+                          mvn test -Dtest=StructuralTestRunner
+                          mvn test -Dtest=SmokeTestRunner
+                          mvn test -Dtest=WorkloadTestRunner
+                    -->
+                    <testFailureIgnore>true</testFailureIgnore>
+                    <includes>
+                        <include>**/AllTestRunner.java</include>
+                    </includes>
+                    <systemPropertyVariables>
+                        <karate.options>${karate.options}</karate.options>
+                        <karate.env>${karate.env}</karate.env>
+                    </systemPropertyVariables>
+                </configuration>
+            </plugin>
+
+            <!--
+                Regenera el index consolidado (reports/dist) automaticamente al terminar
+                los tests, para que nunca quede desactualizado respecto al reporte de Karate.
+                Requiere Node en el PATH. Si falla (p. ej. sin Node), NO rompe la build.
+            -->
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>exec-maven-plugin</artifactId>
+                <version>3.1.1</version>
+                <executions>
+                    <execution>
+                        <id>regenerar-index</id>
+                        <phase>test</phase>
+                        <goals>
+                            <goal>exec</goal>
+                        </goals>
+                        <configuration>
+                            <executable>node</executable>
+                            <workingDirectory>${project.basedir}/..</workingDirectory>
+                            <arguments>
+                                <argument>reports/generar-reportes.mjs</argument>
+                                <argument>--only</argument>
+                                <argument>karate</argument>
+                            </arguments>
+                            <!-- Si Node no esta disponible, no abortar la build de pruebas. -->
+                            <failOnError>false</failOnError>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+
+</project>

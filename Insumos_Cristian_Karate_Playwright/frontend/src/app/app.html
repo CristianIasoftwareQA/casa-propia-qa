@@ -1,0 +1,176 @@
+<header class="barra">
+  <div class="marca">
+    <span class="logo" aria-hidden="true">⌂</span>
+    <div>
+      <strong>Casa Propia</strong>
+      <span class="sub">Atención al asesor · Crédito hipotecario</span>
+    </div>
+  </div>
+  <form class="consulta" (ngSubmit)="consultar()" data-testid="form-consulta">
+    <label for="idConsulta" class="sr">Número de solicitud</label>
+    <input
+      id="idConsulta"
+      name="idConsulta"
+      placeholder="SOL-000001"
+      [(ngModel)]="idConsulta"
+      data-testid="input-consulta"
+    />
+    <button type="submit" class="secundario" [disabled]="ocupado()" data-testid="btn-consultar">Consultar</button>
+  </form>
+</header>
+
+<main class="contenido">
+  <section class="tarjeta formulario" aria-labelledby="titulo-registro">
+    <h2 id="titulo-registro">Nueva solicitud</h2>
+    <form (ngSubmit)="registrar()" data-testid="form-registro" novalidate>
+      <label for="cliente">Cliente</label>
+      <input id="cliente" name="cliente" [(ngModel)]="cliente" autocomplete="off" data-testid="input-cliente" />
+
+      <label for="valorVivienda">Valor de la vivienda (COP)</label>
+      <input
+        id="valorVivienda"
+        name="valorVivienda"
+        type="number"
+        min="1"
+        step="1"
+        [(ngModel)]="valorVivienda"
+        data-testid="input-valor-vivienda"
+      />
+
+      <label for="monto">Monto solicitado (COP)</label>
+      <input id="monto" name="monto" type="number" min="1" step="1" [(ngModel)]="monto" data-testid="input-monto" />
+
+      <label for="plazo">Plazo</label>
+      <select id="plazo" name="plazo" [(ngModel)]="plazoMeses" data-testid="select-plazo">
+        <option [ngValue]="null" disabled>Selecciona…</option>
+        @for (p of plazos; track p) {
+          <option [ngValue]="p">{{ p }} meses</option>
+        }
+      </select>
+
+      @if (erroresRegistro().length) {
+        <ul class="errores" role="alert" data-testid="error-registro">
+          @for (e of erroresRegistro(); track $index) {
+            <li>{{ e }}</li>
+          }
+        </ul>
+      }
+
+      <button type="submit" [disabled]="ocupado()" data-testid="btn-registrar">Registrar solicitud</button>
+    </form>
+  </section>
+
+  <section class="tarjeta detalle" aria-labelledby="titulo-detalle" aria-live="polite">
+    @if (aviso(); as a) {
+      <div class="aviso {{ a.tipo }}" role="status" [attr.data-testid]="a.testId">{{ a.texto }}</div>
+    }
+
+    @if (evaluando()) {
+      <div class="aviso info" role="status" data-testid="evaluacion-en-curso">
+        <span class="spinner" aria-hidden="true"></span> Evaluando con el proveedor…
+        @if (evaluacionDemorada()) {
+          <div class="nota" data-testid="aviso-demora">
+            La evaluación está tardando más de lo habitual. No cierres esta pantalla.
+          </div>
+        }
+      </div>
+    }
+
+    @if (solicitud(); as s) {
+      <div class="encabezado-detalle">
+        <h2 id="titulo-detalle">
+          Solicitud <span data-testid="id-solicitud">{{ s.id }}</span>
+        </h2>
+        <span class="estado {{ s.estado.toLowerCase() }}" data-testid="estado-solicitud">{{
+          etiquetaEstado(s.estado)
+        }}</span>
+      </div>
+
+      @if (s.estado === 'CONFIRMADA') {
+        <div class="resumen" data-testid="resumen-confirmado">
+          <h3>Resumen del crédito confirmado</h3>
+          <dl>
+            <dt>Cliente</dt>
+            <dd data-testid="detalle-cliente">{{ s.cliente }}</dd>
+            <dt>Monto solicitado</dt>
+            <dd data-testid="detalle-monto">{{ pesos(s.valorVivienda) }}</dd>
+            <dt>Plazo</dt>
+            <dd data-testid="detalle-plazo">{{ plazo(s.plazoMeses) }}</dd>
+            <dt>Confirmado el</dt>
+            <dd data-testid="detalle-confirmada-en">{{ fecha(s.confirmadaEn) }}</dd>
+          </dl>
+        </div>
+      } @else {
+        <dl class="datos">
+          <dt>Cliente</dt>
+          <dd data-testid="detalle-cliente">{{ s.cliente }}</dd>
+          <dt>Valor de la vivienda</dt>
+          <dd data-testid="detalle-valor-vivienda">{{ pesos(s.valorVivienda) }}</dd>
+          <dt>Monto solicitado</dt>
+          <dd data-testid="detalle-monto">{{ pesos(s.monto) }}</dd>
+          <dt>Plazo</dt>
+          <dd data-testid="detalle-plazo">{{ plazo(s.plazoMeses) }}</dd>
+          <dt>Registrada el</dt>
+          <dd>{{ fecha(s.creadaEn) }}</dd>
+        </dl>
+      }
+
+      @if (s.estado === 'RECHAZADA') {
+        <div class="rechazo" data-testid="razon-rechazo">
+          <strong>Motivo:</strong> {{ s.razonRechazo }}
+        </div>
+      }
+
+      <div class="documentos">
+        <h3>Documentos</h3>
+        <ul data-testid="lista-documentos">
+          @for (t of tiposDocumento; track t.valor) {
+            <li [class.ok]="s.documentos.includes(t.valor)" [attr.data-testid]="'doc-' + t.valor">
+              {{ s.documentos.includes(t.valor) ? '✔' : '○' }} {{ t.etiqueta }}
+            </li>
+          }
+        </ul>
+
+        @if ((s.estado === 'REGISTRADA' || s.estado === 'PREAPROBADA') && s.documentosPendientes.length) {
+          <fieldset class="seleccion-docs">
+            <legend>Registrar documentos recibidos</legend>
+            @for (d of s.documentosPendientes; track d) {
+              <label>
+                <input
+                  type="checkbox"
+                  [name]="'chk-' + d"
+                  [(ngModel)]="documentosSeleccionados[d]"
+                  [attr.data-testid]="'chk-' + d"
+                />
+                {{ nombreDocumento(d) }}
+              </label>
+            }
+            <button type="button" class="secundario" [disabled]="ocupado()" (click)="registrarDocumentos()" data-testid="btn-registrar-documentos">
+              Registrar documentos
+            </button>
+          </fieldset>
+        }
+      </div>
+
+      <div class="acciones">
+        @if (s.estado === 'REGISTRADA') {
+          <button type="button" [disabled]="ocupado()" (click)="evaluar()" data-testid="btn-evaluar">
+            Evaluar solicitud
+          </button>
+        }
+        @if (s.estado === 'PREAPROBADA') {
+          <button type="button" [disabled]="ocupado()" (click)="confirmar()" data-testid="btn-confirmar">
+            Confirmar crédito
+          </button>
+        }
+        <button type="button" class="enlace" (click)="nuevaSolicitud()" data-testid="btn-nueva">Nueva solicitud</button>
+      </div>
+    } @else if (!evaluando()) {
+      <div class="vacio" id="titulo-detalle">
+        <p>Registra una solicitud o consulta una existente por su número.</p>
+      </div>
+    }
+  </section>
+</main>
+
+<footer class="pie">Casa Propia · v1.4.0 · Datos ficticios para fines de prueba</footer>

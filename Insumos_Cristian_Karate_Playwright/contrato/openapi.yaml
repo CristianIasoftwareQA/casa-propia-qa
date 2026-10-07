@@ -1,0 +1,392 @@
+openapi: 3.0.3
+info:
+  title: Casa Propia — API de solicitudes de crédito hipotecario
+  version: 1.4.0
+  description: |
+    API usada por la pantalla del asesor para registrar, evaluar, documentar y confirmar
+    solicitudes de crédito hipotecario. Las reglas son ficticias y solo aplican a este ejercicio.
+
+    **Persistencia:** en memoria. Los datos se pierden al reiniciar la aplicación.
+    **Autenticación:** no aplica.
+
+    ### Ciclo de vida
+    ```
+    REGISTRADA ──evaluación──► PREAPROBADA ──confirmación (documentos completos)──► CONFIRMADA
+         │
+         └────evaluación──► RECHAZADA
+    ```
+    - Solo una solicitud `REGISTRADA` puede evaluarse.
+    - Solo una solicitud `PREAPROBADA` con todos los documentos requeridos puede confirmarse.
+    - Una solicitud `CONFIRMADA` no puede volver a confirmarse.
+    - Cualquier operación no permitida responde `409` y **no modifica** el estado ni los datos de la solicitud.
+
+    ### Regla de evaluación
+    Se preaprueba si `monto <= 80 % de valorVivienda` (límite inclusive). Si lo supera, queda
+    `RECHAZADA` con una razón general en `razonRechazo`.
+
+    ### Documentos requeridos para confirmar
+    `CEDULA`, `CERTIFICADO_INGRESOS`, `AVALUO_VIVIENDA`.
+
+    ### Condiciones de simulación
+    Ver `condiciones-simulacion.md` (proveedor de evaluación y condición *jornada*).
+servers:
+  - url: http://localhost:3000/api
+    description: API local
+  - url: http://localhost:4200/api
+    description: Misma API a través del proxy de la interfaz (ng serve)
+
+tags:
+  - name: Solicitudes
+  - name: Simulación
+  - name: Salud
+
+paths:
+  /salud:
+    get:
+      tags: [Salud]
+      summary: Comprobación de disponibilidad
+      responses:
+        '200':
+          description: Servicio disponible
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  estado: { type: string, example: OK }
+                  servicio: { type: string, example: casa-propia-api }
+                  version: { type: string, example: 1.4.0 }
+
+  /solicitudes:
+    post:
+      tags: [Solicitudes]
+      summary: Registrar una solicitud
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/NuevaSolicitud' }
+            example:
+              cliente: Ana Gómez
+              valorVivienda: 200000000
+              monto: 120000000
+              plazoMeses: 180
+      responses:
+        '201':
+          description: Solicitud registrada en estado REGISTRADA
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Solicitud' }
+        '400':
+          description: Datos inválidos. La solicitud no se registra.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              example:
+                codigo: DATOS_INVALIDOS
+                mensaje: La solicitud contiene datos inválidos
+                detalles:
+                  - campo: plazoMeses
+                    mensaje: 'Debe ser uno de: 120, 180, 240'
+
+  /solicitudes/{id}:
+    get:
+      tags: [Solicitudes]
+      summary: Consultar una solicitud
+      parameters:
+        - $ref: '#/components/parameters/Id'
+        - name: X-Condicion-Atencion
+          in: header
+          required: false
+          description: |
+            `jornada` simula la latencia de una jornada de atención con varios asesores consultando
+            simultáneamente (ver `condiciones-simulacion.md`). `normal` o ausente: sin simulación.
+          schema:
+            type: string
+            enum: [normal, jornada]
+      responses:
+        '200':
+          description: Solicitud encontrada
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Solicitud' }
+        '400':
+          description: Valor de cabecera no válido
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '404':
+          description: No existe la solicitud
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              example:
+                codigo: SOLICITUD_NO_ENCONTRADA
+                mensaje: No existe la solicitud SOL-999999
+
+  /solicitudes/{id}/evaluacion:
+    post:
+      tags: [Solicitudes]
+      summary: Evaluar una solicitud con el proveedor de evaluación
+      description: |
+        Consulta al proveedor externo y aplica la regla del 80 %. Si el proveedor no está disponible
+        responde `503` y la solicitud **no cambia**; puede reintentarse cuando el proveedor se recupere.
+      parameters:
+        - $ref: '#/components/parameters/Id'
+        - name: X-Simulacion-Proveedor
+          in: header
+          required: false
+          description: Fuerza el comportamiento del proveedor solo para esta petición. Si no se envía se usa la configuración global (`/simulacion/proveedor`).
+          schema:
+            type: string
+            enum: [normal, demora, no-disponible]
+      responses:
+        '200':
+          description: Solicitud evaluada (PREAPROBADA o RECHAZADA)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Solicitud' }
+        '400':
+          description: Valor de cabecera no válido
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '404':
+          description: No existe la solicitud
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '409':
+          description: La solicitud no está en estado REGISTRADA
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              example:
+                codigo: TRANSICION_NO_PERMITIDA
+                mensaje: Solo se puede evaluar una solicitud en estado REGISTRADA
+                estadoActual: PREAPROBADA
+        '503':
+          description: Proveedor no disponible. La solicitud no se modifica.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              example:
+                codigo: PROVEEDOR_NO_DISPONIBLE
+                mensaje: El proveedor de evaluación no está disponible. Intente de nuevo más tarde.
+
+  /solicitudes/{id}/documentos:
+    post:
+      tags: [Solicitudes]
+      summary: Registrar documentos recibidos
+      description: Agrega los documentos indicados a los ya registrados (sin duplicar). Permitido en REGISTRADA y PREAPROBADA.
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [documentos]
+              properties:
+                documentos:
+                  type: array
+                  minItems: 1
+                  items: { $ref: '#/components/schemas/TipoDocumento' }
+            example:
+              documentos: [CEDULA, CERTIFICADO_INGRESOS, AVALUO_VIVIENDA]
+      responses:
+        '200':
+          description: Documentos registrados
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Solicitud' }
+        '400':
+          description: Lista vacía o tipo de documento no reconocido
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '404':
+          description: No existe la solicitud
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '409':
+          description: Estado que no admite documentos (RECHAZADA o CONFIRMADA)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /solicitudes/{id}/confirmacion:
+    post:
+      tags: [Solicitudes]
+      summary: Confirmar el crédito
+      description: |
+        Requiere estado PREAPROBADA y los tres documentos requeridos. Un intento no permitido
+        responde `409` y conserva estado y datos (incluidas las fechas).
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: Crédito confirmado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Solicitud' }
+        '404':
+          description: No existe la solicitud
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '409':
+          description: |
+            `TRANSICION_NO_PERMITIDA` si el estado no es PREAPROBADA (REGISTRADA, RECHAZADA o ya CONFIRMADA).
+            `DOCUMENTOS_INCOMPLETOS` si faltan documentos requeridos.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              examples:
+                yaConfirmada:
+                  value:
+                    codigo: TRANSICION_NO_PERMITIDA
+                    mensaje: Solo se puede confirmar una solicitud PREAPROBADA
+                    estadoActual: CONFIRMADA
+                documentosIncompletos:
+                  value:
+                    codigo: DOCUMENTOS_INCOMPLETOS
+                    mensaje: Faltan documentos requeridos para confirmar
+                    estadoActual: PREAPROBADA
+                    detalles:
+                      - campo: documentos
+                        mensaje: Falta AVALUO_VIVIENDA
+
+  /simulacion/proveedor:
+    get:
+      tags: [Simulación]
+      summary: Consultar la configuración global del proveedor simulado
+      responses:
+        '200':
+          description: Configuración actual
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ConfiguracionProveedor' }
+    put:
+      tags: [Simulación]
+      summary: Cambiar la configuración global del proveedor simulado
+      description: Afecta a todas las evaluaciones que no envíen `X-Simulacion-Proveedor`, incluidas las hechas desde la interfaz.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ConfiguracionProveedor' }
+            example: { modo: demora, demoraMs: 4000 }
+      responses:
+        '200':
+          description: Configuración aplicada
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ConfiguracionProveedor' }
+        '400':
+          description: Configuración inválida
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+components:
+  parameters:
+    Id:
+      name: id
+      in: path
+      required: true
+      schema: { type: string, example: SOL-000001 }
+
+  schemas:
+    TipoDocumento:
+      type: string
+      enum: [CEDULA, CERTIFICADO_INGRESOS, AVALUO_VIVIENDA]
+
+    EstadoSolicitud:
+      type: string
+      enum: [REGISTRADA, PREAPROBADA, RECHAZADA, CONFIRMADA]
+
+    NuevaSolicitud:
+      type: object
+      required: [cliente, valorVivienda, monto, plazoMeses]
+      properties:
+        cliente:
+          type: string
+          minLength: 1
+          maxLength: 120
+          description: Nombre del cliente. Obligatorio; no puede ser vacío ni solo espacios.
+        valorVivienda:
+          type: integer
+          minimum: 1
+          description: Valor de la vivienda en pesos. Entero positivo.
+        monto:
+          type: integer
+          minimum: 1
+          description: Monto solicitado en pesos. Entero positivo.
+        plazoMeses:
+          type: integer
+          enum: [120, 180, 240]
+
+    Solicitud:
+      type: object
+      properties:
+        id: { type: string, example: SOL-000001 }
+        cliente: { type: string }
+        valorVivienda: { type: integer }
+        monto: { type: integer }
+        plazoMeses: { type: integer, enum: [120, 180, 240] }
+        estado: { $ref: '#/components/schemas/EstadoSolicitud' }
+        razonRechazo:
+          type: string
+          nullable: true
+          description: Razón general del rechazo. `null` si no está rechazada.
+        documentos:
+          type: array
+          items: { $ref: '#/components/schemas/TipoDocumento' }
+        documentosPendientes:
+          type: array
+          items: { $ref: '#/components/schemas/TipoDocumento' }
+        creadaEn: { type: string, format: date-time }
+        evaluadaEn: { type: string, format: date-time, nullable: true }
+        confirmadaEn: { type: string, format: date-time, nullable: true }
+        actualizadaEn: { type: string, format: date-time }
+
+    ConfiguracionProveedor:
+      type: object
+      required: [modo]
+      properties:
+        modo:
+          type: string
+          enum: [normal, demora, no-disponible]
+        demoraMs:
+          type: integer
+          minimum: 0
+          maximum: 15000
+          default: 4000
+          description: Tiempo de respuesta del proveedor en modo `demora`.
+
+    Error:
+      type: object
+      required: [codigo, mensaje]
+      properties:
+        codigo:
+          type: string
+          enum:
+            - DATOS_INVALIDOS
+            - SOLICITUD_NO_ENCONTRADA
+            - TRANSICION_NO_PERMITIDA
+            - DOCUMENTOS_INCOMPLETOS
+            - PROVEEDOR_NO_DISPONIBLE
+            - RECURSO_NO_ENCONTRADO
+            - ERROR_INTERNO
+        mensaje: { type: string }
+        estadoActual: { $ref: '#/components/schemas/EstadoSolicitud' }
+        detalles:
+          type: array
+          items:
+            type: object
+            properties:
+              campo: { type: string }
+              mensaje: { type: string }

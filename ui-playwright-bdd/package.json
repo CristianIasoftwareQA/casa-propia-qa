@@ -1,0 +1,35 @@
+{
+  "name": "casa-propia-ui-playwright-bdd",
+  "version": "1.0.0",
+  "description": "Suite de pruebas UI E2E para la prueba tecnica Casa Propia usando Playwright Test + playwright-bdd (Gherkin en espanol).",
+  "private": true,
+  "type": "commonjs",
+  "scripts": {
+    "bddgen": "bddgen",
+    "typecheck": "tsc --noEmit",
+    "pretest": "npm run bddgen",
+    "test": "playwright test --grep-invert @pendienteContrato",
+    "test:structural": "bddgen && playwright test --grep @structural",
+    "test:smoke": "bddgen && playwright test --grep @smoke --grep-invert @pendienteContrato",
+    "test:regression": "bddgen && playwright test --grep-invert @pendienteContrato",
+    "test:headed": "bddgen && playwright test --headed --grep-invert @pendienteContrato",
+    "test:debug": "bddgen && playwright test --debug --grep-invert @pendienteContrato",
+    "test:report": "playwright show-report",
+    "posttest": "node ../reports/generar-reportes.mjs --only playwright"
+  },
+  "keywords": [
+    "playwright",
+    "playwright-bdd",
+    "typescript",
+    "bdd",
+    "gherkin",
+    "e2e"
+  ],
+  "license": "UNLICENSED",
+  "devDependencies": {
+    "@playwright/test": "1.48.2",
+    "@types/node": "20.14.10",
+    "playwright-bdd": "7.5.0",
+    "typescript": "5.5.4"
+  }
+}

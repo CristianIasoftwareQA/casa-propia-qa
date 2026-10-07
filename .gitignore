@@ -1,0 +1,50 @@
+# ======================================================================
+# .gitignore raiz - Casa Propia QA
+# ======================================================================
+
+# ---- Node / Playwright ----
+node_modules/
+# Archivos BDD generados por playwright-bdd
+ui-playwright-bdd/.features-gen/
+playwright-report/
+test-results/
+blob-report/
+# Trazas, videos y screenshots automaticos
+**/traces/
+**/trace/
+**/videos/
+**/*.webm
+**/screenshots/
+.playwright/
+
+# ---- Java / Maven / Karate ----
+target/
+**/karate-reports/
+**/karate-tags.txt
+*.iml
+
+# ---- Entornos y secretos ----
+.env
+*.env
+!*.env.example
+
+# ---- Reportes consolidados generados ----
+reports/dist/
+reports/dist-word/
+
+# ---- Logs y temporales ----
+*.log
+logs/
+*.tmp
+tmp/
+
+# ---- IDE ----
+.idea/
+.vscode/
+*.swp
+.DS_Store
+
+# ======================================================================
+# Se CONSERVAN explicitamente:
+#   .env.example, **/.gitkeep, docs/, codigo fuente, configuracion.
+# ======================================================================

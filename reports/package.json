@@ -1,0 +1,14 @@
+{
+  "name": "casa-propia-qa-reports",
+  "version": "1.0.0",
+  "description": "Generador de reportes consolidados (PDF + index) a partir de los reportes de Karate y Playwright.",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "generar": "node generar-reportes.mjs"
+  },
+  "license": "UNLICENSED",
+  "dependencies": {
+    "docx": "^9.1.0"
+  }
+}

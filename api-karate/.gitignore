@@ -1,0 +1,17 @@
+# Artefactos de compilacion Maven / Karate
+target/
+*.log
+
+# Reportes y resultados generados por Karate
+**/karate-reports/
+**/karate-tags.txt
+
+# IDE
+.idea/
+*.iml
+.vscode/
+
+# Secretos y entornos locales
+.env
+*.env
+!*.env.example
